@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="NoteClass - Graba tus clases y toma apuntes en tiempo real con transcripción automática por voz">
+    <title>NoteClass — Apuntes Inteligentes en Tiempo Real</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+    <!-- Ambient Background -->
+    <div class="ambient-bg">
+        <div class="ambient-orb orb-1"></div>
+        <div class="ambient-orb orb-2"></div>
+        <div class="ambient-orb orb-3"></div>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="app" class="app-container">
+
+        <!-- Header -->
+        <header id="app-header" class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="2" y="4" width="20" height="26" rx="3" stroke="currentColor" stroke-width="2" />
+                            <path d="M8 12H18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M8 16H16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M8 20H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <circle cx="24" cy="10" r="6" fill="currentColor" opacity="0.2" stroke="currentColor"
+                                stroke-width="2" />
+                            <path d="M24 7V10L26 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <div class="logo-text">
+                        <h1>NoteClass</h1>
+                        <span class="logo-subtitle">Apuntes Inteligentes</span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-center">
+                <div id="session-info" class="session-info hidden">
+                    <div class="session-badge">
+                        <span class="pulse-dot"></span>
+                        <span id="session-status-text">Grabando</span>
+                    </div>
+                    <div id="timer" class="timer">00:00:00</div>
+                </div>
+            </div>
+            <div class="header-right">
+                <button id="btn-history" class="header-btn" title="Historial de sesiones">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                </button>
+                <button id="btn-settings" class="header-btn" title="Configuración">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Welcome Screen -->
+        <main id="welcome-screen" class="welcome-screen">
+            <div class="welcome-content">
+                <div class="welcome-icon">
+                    <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="8" y="12" width="40" height="56" rx="6" stroke="url(#grad1)" stroke-width="2.5" />
+                        <path d="M18 28H38" stroke="url(#grad1)" stroke-width="2" stroke-linecap="round" />
+                        <path d="M18 36H34" stroke="url(#grad1)" stroke-width="2" stroke-linecap="round" />
+                        <path d="M18 44H30" stroke="url(#grad1)" stroke-width="2" stroke-linecap="round" />
+                        <circle cx="58" cy="30" r="16" stroke="url(#grad2)" stroke-width="2.5" />
+                        <rect x="54" y="22" width="8" height="12" rx="4" stroke="url(#grad2)" stroke-width="2" />
+                        <path d="M50 30C50 34.4 53.6 38 58 38C62.4 38 66 34.4 66 30" stroke="url(#grad2)"
+                            stroke-width="2" stroke-linecap="round" />
+                        <line x1="58" y1="38" x2="58" y2="43" stroke="url(#grad2)" stroke-width="2" />
+                        <line x1="54" y1="43" x2="62" y2="43" stroke="url(#grad2)" stroke-width="2"
+                            stroke-linecap="round" />
+                        <defs>
+                            <linearGradient id="grad1" x1="8" y1="12" x2="48" y2="68" gradientUnits="userSpaceOnUse">
+                                <stop offset="0%" stop-color="#6366f1" />
+                                <stop offset="100%" stop-color="#8b5cf6" />
+                            </linearGradient>
+                            <linearGradient id="grad2" x1="42" y1="14" x2="74" y2="46" gradientUnits="userSpaceOnUse">
+                                <stop offset="0%" stop-color="#ec4899" />
+                                <stop offset="100%" stop-color="#f43f5e" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <h2 class="welcome-title">Bienvenido a <span class="gradient-text">NoteClass</span></h2>
+                <p class="welcome-desc">Graba tus clases y obtén apuntes automáticos en tiempo real. Solo presiona el
+                    botón y deja que la inteligencia haga el resto.</p>
+
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🎙️</div>
+                        <h3>Grabación HD</h3>
+                        <p>Audio de alta calidad para no perder ningún detalle</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">✍️</div>
+                        <h3>Transcripción Live</h3>
+                        <p>Convierte voz a texto en tiempo real automáticamente</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📋</div>
+                        <h3>Apuntes Smart</h3>
+                        <p>Organiza y exporta tus notas al instante</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💾</div>
+                        <h3>Guarda Todo</h3>
+                        <p>Descarga audio y apuntes cuando los necesites</p>
+                    </div>
+                </div>
+
+                <div class="start-session-area">
+                    <input type="text" id="session-name" class="session-name-input"
+                        placeholder="Nombre de la clase (ej: Matemáticas II - Derivadas)" autocomplete="off">
+                    <button id="btn-start-session" class="btn-start-session">
+                        <span class="btn-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none" />
+                            </svg>
+                        </span>
+                        <span>Iniciar Sesión de Clase</span>
+                    </button>
+                </div>
+
+                <div id="browser-warning" class="browser-warning hidden">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path
+                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <span>Tu navegador no soporta reconocimiento de voz. Usa <strong>Google Chrome</strong> o
+                        <strong>Microsoft Edge</strong> para la mejor experiencia.</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Recording Session Screen -->
+        <main id="session-screen" class="session-screen hidden">
+            <div class="session-layout">
+
+                <!-- Left Panel - Transcription -->
+                <div class="panel transcription-panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" class="panel-icon">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                <line x1="12" y1="19" x2="12" y2="23" />
+                                <line x1="8" y1="23" x2="16" y2="23" />
+                            </svg>
+                            Transcripción en Vivo
+                        </h2>
+                        <div class="panel-actions">
+                            <span id="word-count" class="word-count">0 palabras</span>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div id="transcription-area" class="transcription-area">
+                            <div id="transcription-content" class="transcription-content">
+                                <p class="transcription-placeholder">La transcripción aparecerá aquí cuando comiences a
+                                    hablar...</p>
+                            </div>
+                            <div id="interim-text" class="interim-text"></div>
+                        </div>
+                        <!-- Audio Visualizer -->
+                        <div class="visualizer-container">
+                            <canvas id="audio-visualizer" class="audio-visualizer"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel - Notes -->
+                <div class="panel notes-panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" class="panel-icon">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                                <line x1="16" y1="13" x2="8" y2="13" />
+                                <line x1="16" y1="17" x2="8" y2="17" />
+                                <polyline points="10 9 9 9 8 9" />
+                            </svg>
+                            Mis Apuntes
+                        </h2>
+                        <div class="panel-actions">
+                            <button id="btn-add-marker" class="panel-action-btn" title="Agregar marcador">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                                </svg>
+                            </button>
+                            <button id="btn-add-highlight" class="panel-action-btn" title="Marcar como importante">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <polygon
+                                        points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div id="notes-area" class="notes-area">
+                            <textarea id="notes-editor" class="notes-editor"
+                                placeholder="✏️ Escribe tus apuntes aquí...&#10;&#10;💡 Tips:&#10;• Usa — al inicio para viñetas&#10;• Usa ## para títulos&#10;• Los marcadores se agregan con el botón ⭐&#10;• La transcripción se genera automáticamente"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Controls -->
+            <div class="session-controls">
+                <div class="controls-left">
+                    <button id="btn-pause" class="control-btn" title="Pausar grabación">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="4" width="4" height="16" />
+                            <rect x="14" y="4" width="4" height="16" />
+                        </svg>
+                        <span>Pausar</span>
+                    </button>
+                    <button id="btn-resume" class="control-btn hidden" title="Reanudar grabación">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                        <span>Reanudar</span>
+                    </button>
+                </div>
+                <div class="controls-center">
+                    <button id="btn-stop" class="control-btn btn-stop" title="Detener sesión">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="4" y="4" width="16" height="16" rx="2" />
+                        </svg>
+                        <span>Finalizar Clase</span>
+                    </button>
+                </div>
+                <div class="controls-right">
+                    <button id="btn-screenshot" class="control-btn" title="Capturar momento importante">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path
+                                d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                            <circle cx="12" cy="13" r="4" />
+                        </svg>
+                        <span>Marcar</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Session Summary Screen -->
+        <main id="summary-screen" class="summary-screen hidden">
+            <div class="summary-content">
+                <div class="summary-header">
+                    <h2 class="summary-title">📝 Resumen de la Sesión</h2>
+                    <p id="summary-session-name" class="summary-session-name"></p>
+                </div>
+
+                <div class="summary-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon">⏱️</div>
+                        <div class="stat-value" id="stat-duration">00:00:00</div>
+                        <div class="stat-label">Duración</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📝</div>
+                        <div class="stat-value" id="stat-words">0</div>
+                        <div class="stat-label">Palabras</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🔖</div>
+                        <div class="stat-value" id="stat-markers">0</div>
+                        <div class="stat-label">Marcadores</div>
+                    </div>
+                </div>
+
+                <div class="summary-sections">
+                    <div class="summary-section">
+                        <h3>Transcripción Completa</h3>
+                        <div id="summary-transcription" class="summary-text-area"></div>
+                    </div>
+                    <div class="summary-section">
+                        <h3>Apuntes</h3>
+                        <div id="summary-notes" class="summary-text-area"></div>
+                    </div>
+                </div>
+
+                <div class="summary-actions">
+                    <button id="btn-download-audio" class="summary-btn btn-primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        Descargar Audio (MP3)
+                    </button>
+                    <button id="btn-download-notes" class="summary-btn btn-secondary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                            <polyline points="10 9 9 9 8 9" />
+                        </svg>
+                        Descargar Apuntes (PDF)
+                    </button>
+                    <button id="btn-download-all" class="summary-btn btn-accent">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                            <line x1="8" y1="21" x2="16" y2="21" />
+                            <line x1="12" y1="17" x2="12" y2="21" />
+                        </svg>
+                        Descargar Todo
+                    </button>
+                    <button id="btn-new-session" class="summary-btn btn-outline">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        Nueva Sesión
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- History Modal -->
+        <div id="history-modal" class="modal hidden">
+            <div class="modal-overlay"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📚 Historial de Sesiones</h2>
+                    <button id="btn-close-history" class="modal-close">&times;</button>
+                </div>
+                <div id="history-list" class="history-list">
+                    <p class="empty-history">No hay sesiones guardadas aún. ¡Comienza tu primera clase!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-overlay"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>⚙️ Configuración</h2>
+                    <button id="btn-close-settings" class="modal-close">&times;</button>
+                </div>
+                <div class="settings-body">
+                    <div class="setting-group">
+                        <label class="setting-label">Idioma de reconocimiento</label>
+                        <select id="setting-language" class="setting-select">
+                            <option value="es-ES">Español (España)</option>
+                            <option value="es-AR" selected>Español (Argentina)</option>
+                            <option value="es-MX">Español (México)</option>
+                            <option value="en-US">English (US)</option>
+                            <option value="en-GB">English (UK)</option>
+                            <option value="pt-BR">Português (Brasil)</option>
+                            <option value="fr-FR">Français</option>
+                            <option value="de-DE">Deutsch</option>
+                            <option value="it-IT">Italiano</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label class="setting-label">Modo de transcripción</label>
+                        <select id="setting-mode" class="setting-select">
+                            <option value="continuous" selected>Continuo (recomendado para clases)</option>
+                            <option value="manual">Manual (presionar para hablar)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label class="setting-label">Tamaño de texto</label>
+                        <input type="range" id="setting-font-size" class="setting-range" min="12" max="24" value="16">
+                        <span id="font-size-value" class="setting-range-value">16px</span>
+                    </div>
+                    <div class="setting-group">
+                        <label class="setting-label">Auto-guardar</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-autosave" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="loading-content">
+                <div class="loading-spinner"></div>
+                <p id="loading-message">Procesando...</p>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="toast hidden">
+            <span id="toast-message"></span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

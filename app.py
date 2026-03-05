@@ -26,9 +26,22 @@ def convert_audio():
 
     audio_file = request.files['audio']
     session_name = request.form.get('sessionName', 'audio')
+    # Get the input format from the frontend (webm, mp4, ogg, wav, etc.)
+    input_format = request.form.get('inputFormat', 'webm')
     
-    # Create temp files
-    fd_in, temp_in = tempfile.mkstemp(suffix='.webm')
+    # Map common extensions to pydub-compatible format names
+    format_map = {
+        'webm': 'webm',
+        'mp4': 'mp4',
+        'aac': 'aac',
+        'ogg': 'ogg',
+        'wav': 'wav',
+        'm4a': 'mp4',
+    }
+    pydub_format = format_map.get(input_format, input_format)
+    
+    # Create temp files with the correct extension
+    fd_in, temp_in = tempfile.mkstemp(suffix=f'.{input_format}')
     fd_out, temp_out = tempfile.mkstemp(suffix='.mp3')
     
     try:
@@ -38,8 +51,14 @@ def convert_audio():
         # Save uploaded file
         audio_file.save(temp_in)
         
-        # Convert webm to mp3 using pydub
-        audio = AudioSegment.from_file(temp_in, format="webm")
+        # Convert to mp3 using pydub (auto-detects format via ffmpeg)
+        try:
+            audio = AudioSegment.from_file(temp_in, format=pydub_format)
+        except Exception:
+            # Fallback: let ffmpeg auto-detect the format
+            print(f"Format '{pydub_format}' failed, trying auto-detect...")
+            audio = AudioSegment.from_file(temp_in)
+        
         audio.export(temp_out, format="mp3", bitrate="128k")
         
         filename = f"{session_name.replace(' ', '_')}_audio.mp3"

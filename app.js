@@ -12,6 +12,26 @@
     }
 
     // ==========================================
+    // Mobile viewport height fix (address bar)
+    // ==========================================
+    function setMobileVH() {
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', vh + 'px');
+    }
+    setMobileVH();
+    window.addEventListener('resize', setMobileVH);
+    window.addEventListener('orientationchange', () => {
+        setTimeout(setMobileVH, 150);
+    });
+
+    // ==========================================
+    // Mobile / Browser detection helpers
+    // ==========================================
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|SamsungBrowser/i.test(navigator.userAgent);
+    const isSamsungBrowser = /SamsungBrowser/i.test(navigator.userAgent);
+    const isEdgeMobile = /EdgA|EdgiOS/i.test(navigator.userAgent);
+
+    // ==========================================
     // State
     // ==========================================
     const state = {
@@ -220,13 +240,18 @@
 
         try {
             // Request microphone
+            // On mobile, avoid specifying sampleRate as many browsers reject it
+            const audioConstraints = {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            };
+            // Only set sampleRate on desktop (mobile browsers often reject it)
+            if (!isMobile) {
+                audioConstraints.sampleRate = 44100;
+            }
             state.mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    sampleRate: 44100
-                }
+                audio: audioConstraints
             });
 
             // Setup audio recording
@@ -383,14 +408,61 @@
     }
 
     // ==========================================
-    // Media Recorder (WebM fallback + RAW PCM for MP3)
+    // Media Recorder (multi-format support)
     // ==========================================
-    function setupMediaRecorder() {
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-            ? 'audio/webm;codecs=opus'
-            : 'audio/webm';
+    function getSupportedMimeType() {
+        // Try formats in order of preference, covering Chrome, Edge, Samsung Internet, Safari
+        const candidates = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/mp4;codecs=aac',
+            'audio/mp4',
+            'audio/ogg;codecs=opus',
+            'audio/ogg',
+            'audio/aac',
+            'audio/wav',
+            '' // empty string = let browser choose default
+        ];
 
-        state.mediaRecorder = new MediaRecorder(state.mediaStream, { mimeType });
+        for (const candidate of candidates) {
+            if (candidate === '') return ''; // fallback: no mimeType specified
+            try {
+                if (MediaRecorder.isTypeSupported(candidate)) {
+                    console.log('[NoteClass] Using audio MIME type:', candidate);
+                    return candidate;
+                }
+            } catch (e) {
+                // Some browsers throw on isTypeSupported
+            }
+        }
+        return '';
+    }
+
+    function getFileExtensionFromMime(mimeType) {
+        if (mimeType.includes('webm')) return 'webm';
+        if (mimeType.includes('mp4') || mimeType.includes('aac')) return 'mp4';
+        if (mimeType.includes('ogg')) return 'ogg';
+        if (mimeType.includes('wav')) return 'wav';
+        return 'webm'; // default
+    }
+
+    function setupMediaRecorder() {
+        const mimeType = getSupportedMimeType();
+        const recorderOptions = {};
+        if (mimeType) {
+            recorderOptions.mimeType = mimeType;
+        }
+
+        try {
+            state.mediaRecorder = new MediaRecorder(state.mediaStream, recorderOptions);
+        } catch (e) {
+            console.warn('[NoteClass] MediaRecorder with options failed, trying default:', e);
+            state.mediaRecorder = new MediaRecorder(state.mediaStream);
+        }
+
+        // Store the actual mimeType used
+        state.recordingMimeType = state.mediaRecorder.mimeType || mimeType || 'audio/webm';
+        console.log('[NoteClass] MediaRecorder started with mimeType:', state.recordingMimeType);
 
         state.mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) {
@@ -399,7 +471,13 @@
         };
 
         state.mediaRecorder.onstop = () => {
-            state.audioBlob = new Blob(state.audioChunks, { type: mimeType });
+            state.audioBlob = new Blob(state.audioChunks, { type: state.recordingMimeType });
+        };
+
+        // Handle unexpected errors (common on mobile)
+        state.mediaRecorder.onerror = (e) => {
+            console.error('[NoteClass] MediaRecorder error:', e);
+            showToast('⚠️ Error en la grabación de audio');
         };
     }
 
@@ -410,15 +488,23 @@
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
         if (!SpeechRecognition) {
-            showToast('⚠️ Tu navegador no soporta reconocimiento de voz');
+            showToast('⚠️ Tu navegador no soporta reconocimiento de voz. La grabación de audio continuará.');
             return;
         }
 
         state.recognition = new SpeechRecognition();
         state.recognition.lang = state.settings.language;
-        state.recognition.continuous = true;
         state.recognition.interimResults = true;
         state.recognition.maxAlternatives = 1;
+
+        // Samsung Internet and some mobile Edge versions don't support continuous mode well
+        // Use continuous where supported, with robust restart fallback
+        try {
+            state.recognition.continuous = true;
+        } catch (e) {
+            console.warn('[NoteClass] continuous mode not supported, using restart fallback');
+            state.recognition.continuous = false;
+        }
 
         state.recognition.onresult = (event) => {
             let finalTranscript = '';
@@ -442,20 +528,61 @@
             }
         };
 
+        // Track restart attempts to avoid infinite loops
+        let restartAttempts = 0;
+        const MAX_RESTART_ATTEMPTS = 5;
+        let lastRestartTime = 0;
+
         state.recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
+            console.error('[NoteClass] Speech recognition error:', event.error);
+
+            // Don't show toast for recoverable errors
             if (event.error === 'not-allowed') {
                 showToast('⚠️ Permiso de micrófono denegado');
+            } else if (event.error === 'network') {
+                showToast('⚠️ Error de red en reconocimiento de voz. Reintentando...');
+            } else if (event.error === 'no-speech') {
+                // This is normal, recognition will auto-restart
+            } else if (event.error === 'aborted') {
+                // Can happen on mobile when screen locks or app goes to background
             }
         };
 
         state.recognition.onend = () => {
             // Auto-restart if still recording (continuous mode)
             if (state.isRecording && !state.isPaused) {
-                try {
-                    state.recognition.start();
-                } catch (e) {
-                    // Ignore - might already be started
+                const now = Date.now();
+                // Reset counter if enough time has passed (5 seconds)
+                if (now - lastRestartTime > 5000) {
+                    restartAttempts = 0;
+                }
+
+                if (restartAttempts < MAX_RESTART_ATTEMPTS) {
+                    restartAttempts++;
+                    lastRestartTime = now;
+
+                    // Delay restart slightly to avoid rapid restart loops on mobile
+                    const delay = Math.min(restartAttempts * 300, 2000);
+                    setTimeout(() => {
+                        if (state.isRecording && !state.isPaused && state.recognition) {
+                            try {
+                                state.recognition.start();
+                            } catch (e) {
+                                console.warn('[NoteClass] Could not restart speech recognition:', e.message);
+                            }
+                        }
+                    }, delay);
+                } else {
+                    console.warn('[NoteClass] Max speech restart attempts reached, waiting before retry...');
+                    // Wait longer before trying again
+                    setTimeout(() => {
+                        restartAttempts = 0;
+                        if (state.isRecording && !state.isPaused && state.recognition) {
+                            try {
+                                state.recognition.start();
+                            } catch (e) { /* ignore */ }
+                        }
+                    }, 5000);
                 }
             }
         };
@@ -507,7 +634,18 @@
         const canvas = els.audioVisualizer;
         const ctx = canvas.getContext('2d');
 
-        state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        try {
+            state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Mobile browsers require resume after user gesture
+            if (state.audioContext.state === 'suspended') {
+                state.audioContext.resume();
+            }
+        } catch (e) {
+            console.warn('[NoteClass] AudioContext not available, visualizer disabled:', e);
+            return;
+        }
+
         const source = state.audioContext.createMediaStreamSource(state.mediaStream);
         state.analyser = state.audioContext.createAnalyser();
         state.analyser.fftSize = 256;
@@ -703,10 +841,14 @@
 
         showLoading('Convirtiendo audio a MP3 en el servidor...');
 
+        // Determine file extension from actual recording format
+        const ext = getFileExtensionFromMime(state.recordingMimeType || 'audio/webm');
+
         try {
             const formData = new FormData();
-            formData.append('audio', state.audioBlob, 'audio.webm');
+            formData.append('audio', state.audioBlob, 'audio.' + ext);
             formData.append('sessionName', state.sessionName);
+            formData.append('inputFormat', ext);
 
             const response = await fetch('/api/convert/audio', {
                 method: 'POST',
@@ -722,8 +864,8 @@
             showToast('🎵 Audio descargado (MP3)');
         } catch (error) {
             console.error('Error downloading MP3:', error);
-            showToast('⚠️ Error generando MP3, intentando descarga directa WebM...');
-            triggerDownload(state.audioBlob, `${sanitizeFilename(state.sessionName)}_audio.webm`);
+            showToast('⚠️ Error generando MP3, descargando audio original...');
+            triggerDownload(state.audioBlob, `${sanitizeFilename(state.sessionName)}_audio.${ext}`);
         } finally {
             hideLoading();
         }
@@ -798,20 +940,41 @@
 
     function triggerDownload(blob, filename) {
         const url = URL.createObjectURL(blob);
+
+        // Mobile browsers (especially Samsung Internet and Edge mobile) often
+        // don't handle anchor click downloads properly. Use multiple strategies.
+        if (isMobile && navigator.share && blob.size < 50 * 1024 * 1024) {
+            // Try Web Share API on mobile (if available and file < 50MB)
+            const file = new File([blob], filename, { type: blob.type });
+            navigator.share({ files: [file] }).catch(() => {
+                // Fallback to anchor download if share fails
+                anchorDownload(url, filename);
+            });
+        } else {
+            anchorDownload(url, filename);
+        }
+    }
+
+    function anchorDownload(url, filename) {
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
         a.download = filename;
+        // Some mobile browsers need the anchor in the DOM and a target
+        a.target = '_self';
         document.body.appendChild(a);
-        a.click();
 
-        // Clean up safely without interrupting the current thread/download initiation
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                if (document.body.contains(a)) document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }, 5000); // 5 seconds is plenty of time for Chrome to capture the filename
-        });
+        // Use setTimeout to allow DOM update before triggering click
+        setTimeout(() => {
+            a.click();
+            // Clean up safely
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    if (document.body.contains(a)) document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 10000); // Longer timeout for mobile browsers
+            });
+        }, 100);
     }
 
     function sanitizeFilename(name) {

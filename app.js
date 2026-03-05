@@ -283,9 +283,29 @@
 
             startTimer();
 
-            // Start recording & recognition
+            // Start recording
             state.mediaRecorder.start(1000); // Collect data every second
-            state.recognition.start();
+
+            // Start speech recognition
+            // On mobile, delay recognition start to avoid microphone contention
+            // with MediaRecorder
+            if (isMobile && state.recognition) {
+                setTimeout(() => {
+                    if (state.isRecording && state.recognition) {
+                        try {
+                            state.recognition.start();
+                            startRecognitionWatchdog();
+                            console.log('[NoteClass] Speech recognition started (mobile, delayed)');
+                        } catch (e) {
+                            console.warn('[NoteClass] Could not start speech recognition:', e.message);
+                            showToast('⚠️ No se pudo iniciar la transcripción. La grabación continúa.');
+                        }
+                    }
+                }, 800);
+            } else if (state.recognition) {
+                state.recognition.start();
+                startRecognitionWatchdog();
+            }
 
             showToast('🎙️ Sesión iniciada: ' + state.sessionName);
         } catch (err) {
@@ -363,9 +383,12 @@
             state.mediaRecorder.stop();
         }
 
-        // Stop speech recognition
+        // Stop speech recognition and watchdog
+        stopRecognitionWatchdog();
         if (state.recognition) {
-            state.recognition.stop();
+            try {
+                state.recognition.stop();
+            } catch (e) { /* ignore */ }
         }
 
         // Stop audio visualizer
@@ -482,8 +505,41 @@
     }
 
     // ==========================================
-    // Speech Recognition
+    // Speech Recognition (mobile-compatible)
     // ==========================================
+
+    // Track recognition health globally
+    let recognitionHasProducedResults = false;
+    let recognitionWatchdogTimer = null;
+    let recognitionRestartAttempts = 0;
+    let lastRecognitionRestartTime = 0;
+    const MAX_RESTART_ATTEMPTS = 10;
+
+    function createRecognitionInstance() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return null;
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = state.settings.language;
+        recognition.maxAlternatives = 1;
+
+        // CRITICAL FOR MOBILE: On mobile Chromium browsers (Edge, Samsung Internet,
+        // Mi Browser, etc.), continuous=true causes the recognition to start but
+        // NEVER fire onresult. The fix is to use continuous=false and manually
+        // restart after each result/end event.
+        if (isMobile) {
+            recognition.continuous = false;
+            recognition.interimResults = false; // Mobile is more reliable without interim
+            console.log('[NoteClass] Speech recognition: mobile mode (continuous=false, no interim)');
+        } else {
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            console.log('[NoteClass] Speech recognition: desktop mode (continuous=true, interim=true)');
+        }
+
+        return recognition;
+    }
+
     function setupSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -492,21 +548,36 @@
             return;
         }
 
-        state.recognition = new SpeechRecognition();
-        state.recognition.lang = state.settings.language;
-        state.recognition.interimResults = true;
-        state.recognition.maxAlternatives = 1;
+        recognitionHasProducedResults = false;
+        recognitionRestartAttempts = 0;
 
-        // Samsung Internet and some mobile Edge versions don't support continuous mode well
-        // Use continuous where supported, with robust restart fallback
-        try {
-            state.recognition.continuous = true;
-        } catch (e) {
-            console.warn('[NoteClass] continuous mode not supported, using restart fallback');
-            state.recognition.continuous = false;
-        }
+        // Create initial instance
+        state.recognition = createRecognitionInstance();
+        if (!state.recognition) return;
 
-        state.recognition.onresult = (event) => {
+        attachRecognitionHandlers(state.recognition);
+
+        // Watchdog will be started when recognition actually starts in startSession
+    }
+
+    function attachRecognitionHandlers(recognition) {
+        recognition.onstart = () => {
+            console.log('[NoteClass] Speech recognition started');
+        };
+
+        recognition.onaudiostart = () => {
+            console.log('[NoteClass] Speech recognition: audio capture started');
+        };
+
+        recognition.onresult = (event) => {
+            // Mark as working — clear watchdog warning
+            if (!recognitionHasProducedResults) {
+                recognitionHasProducedResults = true;
+                console.log('[NoteClass] Speech recognition: first result received!');
+            }
+            // Reset restart counter on successful result
+            recognitionRestartAttempts = 0;
+
             let finalTranscript = '';
             let interimTranscript = '';
 
@@ -528,64 +599,137 @@
             }
         };
 
-        // Track restart attempts to avoid infinite loops
-        let restartAttempts = 0;
-        const MAX_RESTART_ATTEMPTS = 5;
-        let lastRestartTime = 0;
-
-        state.recognition.onerror = (event) => {
+        recognition.onerror = (event) => {
             console.error('[NoteClass] Speech recognition error:', event.error);
 
-            // Don't show toast for recoverable errors
             if (event.error === 'not-allowed') {
-                showToast('⚠️ Permiso de micrófono denegado');
+                showToast('⚠️ Permiso de micrófono denegado para transcripción');
             } else if (event.error === 'network') {
-                showToast('⚠️ Error de red en reconocimiento de voz. Reintentando...');
+                showToast('⚠️ Error de red en reconocimiento de voz. Verifica tu conexión a internet.');
+            } else if (event.error === 'service-not-allowed') {
+                showToast('⚠️ Servicio de reconocimiento de voz no disponible en este navegador.');
             } else if (event.error === 'no-speech') {
-                // This is normal, recognition will auto-restart
+                // Normal — just means silence was detected, will auto-restart
             } else if (event.error === 'aborted') {
                 // Can happen on mobile when screen locks or app goes to background
+            } else {
+                console.warn('[NoteClass] Unhandled speech error:', event.error);
             }
         };
 
-        state.recognition.onend = () => {
-            // Auto-restart if still recording (continuous mode)
+        recognition.onend = () => {
+            console.log('[NoteClass] Speech recognition ended');
+
+            // Auto-restart if still recording
             if (state.isRecording && !state.isPaused) {
                 const now = Date.now();
-                // Reset counter if enough time has passed (5 seconds)
-                if (now - lastRestartTime > 5000) {
-                    restartAttempts = 0;
+                // Reset counter if enough time has passed
+                if (now - lastRecognitionRestartTime > 5000) {
+                    recognitionRestartAttempts = 0;
                 }
 
-                if (restartAttempts < MAX_RESTART_ATTEMPTS) {
-                    restartAttempts++;
-                    lastRestartTime = now;
+                if (recognitionRestartAttempts < MAX_RESTART_ATTEMPTS) {
+                    recognitionRestartAttempts++;
+                    lastRecognitionRestartTime = now;
 
-                    // Delay restart slightly to avoid rapid restart loops on mobile
-                    const delay = Math.min(restartAttempts * 300, 2000);
+                    // On mobile, create a FRESH instance each time (critical fix!)
+                    // Mobile Chromium browsers cache internal state and the old instance
+                    // may silently fail to produce results on subsequent starts
+                    const delay = isMobile
+                        ? Math.min(500 + recognitionRestartAttempts * 200, 3000)
+                        : Math.min(recognitionRestartAttempts * 200, 1500);
+
                     setTimeout(() => {
-                        if (state.isRecording && !state.isPaused && state.recognition) {
+                        if (!state.isRecording || state.isPaused) return;
+
+                        if (isMobile) {
+                            // Create fresh instance for mobile
+                            try {
+                                const newRecognition = createRecognitionInstance();
+                                if (newRecognition) {
+                                    attachRecognitionHandlers(newRecognition);
+                                    state.recognition = newRecognition;
+                                    state.recognition.start();
+                                    console.log('[NoteClass] Fresh recognition instance started (mobile)');
+                                }
+                            } catch (e) {
+                                console.warn('[NoteClass] Could not create/start fresh recognition:', e.message);
+                            }
+                        } else {
+                            // Desktop: reuse existing instance
                             try {
                                 state.recognition.start();
                             } catch (e) {
-                                console.warn('[NoteClass] Could not restart speech recognition:', e.message);
+                                console.warn('[NoteClass] Could not restart recognition:', e.message);
                             }
                         }
                     }, delay);
                 } else {
-                    console.warn('[NoteClass] Max speech restart attempts reached, waiting before retry...');
-                    // Wait longer before trying again
+                    console.warn('[NoteClass] Max speech restart attempts reached, waiting 8s...');
+                    showToast('⚠️ Reconocimiento de voz pausado temporalmente. Reintentando...');
                     setTimeout(() => {
-                        restartAttempts = 0;
-                        if (state.isRecording && !state.isPaused && state.recognition) {
+                        recognitionRestartAttempts = 0;
+                        if (state.isRecording && !state.isPaused) {
                             try {
-                                state.recognition.start();
+                                if (isMobile) {
+                                    const newRecognition = createRecognitionInstance();
+                                    if (newRecognition) {
+                                        attachRecognitionHandlers(newRecognition);
+                                        state.recognition = newRecognition;
+                                        state.recognition.start();
+                                    }
+                                } else {
+                                    state.recognition.start();
+                                }
                             } catch (e) { /* ignore */ }
                         }
-                    }, 5000);
+                    }, 8000);
                 }
             }
         };
+    }
+
+    function startRecognitionWatchdog() {
+        // Clear existing watchdog
+        if (recognitionWatchdogTimer) {
+            clearTimeout(recognitionWatchdogTimer);
+        }
+
+        recognitionWatchdogTimer = setTimeout(() => {
+            if (state.isRecording && !recognitionHasProducedResults) {
+                console.warn('[NoteClass] Watchdog: No speech results after 15 seconds');
+                showToast('⚠️ La transcripción no está funcionando. Intentá hablar más fuerte o usá Google Chrome para mejor compatibilidad.');
+
+                // Try one more time with a completely fresh instance
+                if (isMobile && state.recognition) {
+                    try {
+                        state.recognition.stop();
+                    } catch (e) { /* ignore */ }
+
+                    setTimeout(() => {
+                        if (!state.isRecording || state.isPaused) return;
+                        try {
+                            const freshRecognition = createRecognitionInstance();
+                            if (freshRecognition) {
+                                attachRecognitionHandlers(freshRecognition);
+                                state.recognition = freshRecognition;
+                                state.recognition.start();
+                                console.log('[NoteClass] Watchdog: Retrying with fresh instance');
+                            }
+                        } catch (e) {
+                            console.error('[NoteClass] Watchdog retry failed:', e);
+                        }
+                    }, 1000);
+                }
+            }
+        }, 15000);
+    }
+
+    function stopRecognitionWatchdog() {
+        if (recognitionWatchdogTimer) {
+            clearTimeout(recognitionWatchdogTimer);
+            recognitionWatchdogTimer = null;
+        }
     }
 
     function addTranscriptionEntry(text) {
